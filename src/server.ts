@@ -20,6 +20,7 @@ import {
   searchVague,
   upload,
   captcha,
+  asyncRoutes,
 } from "./router/http";
 
 app.post("/login", (req, res) => {
@@ -54,6 +55,10 @@ app.post("/upload", upload_tmp.any(), (req, res) => {
 
 app.get("/captcha", (req, res) => {
   captcha(req, res);
+});
+
+app.get("/getAsyncRoutes", (req, res) => {
+  asyncRoutes(req, res);
 });
 
 app.ws("/socket", function (ws, req) {

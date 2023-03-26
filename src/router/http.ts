@@ -457,40 +457,117 @@ const captcha = async (req: Request, res: Response) => {
   res.type("svg"); // 响应的类型
   res.json({ success: true, data: { text: create.text, svg: create.data } });
 };
-
+/** admin菜单 */
+const adminRouter = {
+  path: "/permission",
+  meta: {
+    title: "权限管理",
+    icon: "lollipop",
+    rank: 10,
+  },
+  children: [
+    {
+      path: "/permission/page/index",
+      name: "PermissionPage",
+      meta: {
+        title: "页面权限",
+        roles: ["admin"],
+      },
+    },
+    {
+      path: "/permission/button/index",
+      name: "PermissionButton",
+      meta: {
+        title: "按钮权限",
+        roles: ["admin"],
+        auths: ["btn_add", "btn_edit", "btn_delete"],
+      },
+    },
+  ],
+};
+/** correctHomework */
+const correctHomeworkRouter = {
+  path: "/correctHomework",
+  meta: {
+    title: "批改作业",
+    icon: "fluent-mdl2:account-activity",
+  },
+  children: [
+    {
+      path: "/correctHomework/index",
+      name: "CorrectHomework",
+      component: "correctHomework/index",
+      meta: {
+        title: "批改作业",
+        keepAlive: true,
+        roles: ["admin"],
+      },
+    },
+  ],
+};
+/** submitHomeworkRouter */
+const submitHomeworkRouter = {
+  path: "/submitHomework",
+  meta: {
+    title: "提交作业",
+    icon: "iconoir:submit-document",
+    roles: ["common"],
+  },
+  children: [
+    {
+      path: "/submitHomework/index",
+      name: "SubmitHomework",
+      component: () => "submitHomework/index",
+      meta: {
+        title: "提交作业",
+        keepAlive: true,
+      },
+    },
+  ],
+};
+/** 异常页面 */
+const errorPage = {
+  path: "/error",
+  redirect: "/error/403",
+  meta: {
+    icon: "informationLine",
+    title: "异常页面",
+    // showLink: false,
+    rank: 9,
+    roles: ["admin"],
+  },
+  children: [
+    {
+      path: "/error/403",
+      name: "403",
+      component: () => "error/403.vue",
+      meta: {
+        title: "403",
+      },
+    },
+    {
+      path: "/error/404",
+      name: "404",
+      component: () => "error/404.vue",
+      meta: {
+        title: "404",
+      },
+    },
+    {
+      path: "/error/500",
+      name: "500",
+      component: () => "error/500.vue",
+      meta: {
+        title: "500",
+      },
+    },
+  ],
+};
 const asyncRoutes = async (req: Request, res: Response) => {
   res.json({
     success: true,
     back: "这是后端返回的路由",
-    data: [
-      {
-        path: "/permission",
-        meta: {
-          title: "权限管理",
-          icon: "lollipop",
-          rank: 10,
-        },
-        children: [
-          {
-            path: "/permission/page/index",
-            name: "PermissionPage",
-            meta: {
-              title: "页面权限",
-              roles: ["admin", "common"],
-            },
-          },
-          {
-            path: "/permission/button/index",
-            name: "PermissionButton",
-            meta: {
-              title: "按钮权限",
-              roles: ["admin", "common"],
-              auths: ["btn_add", "btn_edit", "btn_delete"],
-            },
-          },
-        ],
-      },
-    ],
+    data: [adminRouter, correctHomeworkRouter, submitHomeworkRouter, errorPage],
   });
 };
 

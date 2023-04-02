@@ -3,14 +3,14 @@ import app from "./app";
 import config from "./config";
 import * as dayjs from "dayjs";
 import * as multer from "multer";
-import { user } from "./models/mysql";
+import { homework, user } from "./models/mysql";
 import Logger from "./loaders/logger";
 import { queryTable } from "./utils/mysql";
 const expressSwagger = require("express-swagger-generator")(app);
 expressSwagger(config.options);
 
 queryTable(user);
-
+queryTable(homework);
 import {
   login,
   register,
@@ -21,6 +21,8 @@ import {
   upload,
   captcha,
   asyncRoutes,
+  publishHomework,
+  getHomeworks,
 } from "./router/http";
 
 app.post("/login", (req, res) => {
@@ -84,6 +86,16 @@ app.ws("/socket", function (ws, req) {
     );
   });
 });
+
+app.post("/publishHomework", (req, res) => {
+  publishHomework(req, res);
+});
+
+app.get("/getHomeworks", (req, res) => {
+  getHomeworks(req, res);
+});
+
+
 
 app
   .listen(config.port, () => {

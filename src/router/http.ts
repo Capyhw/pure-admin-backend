@@ -393,7 +393,7 @@ const upload = async (req: Request, res: Response) => {
   // 文件存放地址
   const des_file: any = (index: number) =>
     "./public/files/" + req.files[index].originalname;
-  let filesLength = req.files.length as number;
+  let filesLength = req.files?.length as number;
   let result = [];
 
   function asyncUpload() {
@@ -423,18 +423,19 @@ const upload = async (req: Request, res: Response) => {
     .then((fileList) => {
       res.json({
         success: true,
+        errno: 0,
         data: {
           message: Message[11],
-          fileList,
+          url: `http://127.0.0.1:3000/files/${fileList[0]["filename"]}`,
         },
       });
     })
     .catch(() => {
       res.json({
         success: false,
+        errno: 1,
         data: {
           message: Message[10],
-          fileList: [],
         },
       });
     });
@@ -457,7 +458,63 @@ const captcha = async (req: Request, res: Response) => {
   res.type("svg"); // 响应的类型
   res.json({ success: true, data: { text: create.text, svg: create.data } });
 };
-/** admin菜单 */
+
+let homeworks = [];
+/** 提交作业 */
+const submitHomework = async (req: Request, res: Response) => {};
+/** 发布作业 */
+const publishHomework = async (req: Request, res: Response) => {
+  const { title, deadline, content } = req.body;
+  const newHomework = {
+    title,
+    deadline,
+    content,
+  };
+  // 插入新作业数据到MySQL数据库中
+  connection.query(
+    "INSERT INTO homeworks SET ?",
+    newHomework,
+    (error, results, fields) => {
+      if (error) {
+        console.error(error);
+        res
+          .status(500)
+          .json({ success: false, message: "Internal server error." });
+      } else {
+        // 返回成功的响应，包括新作业的ID和详情
+        homeworks.push(newHomework);
+        res.json({
+          success: true,
+          data: {
+            newHomework,
+          },
+        });
+      }
+    }
+  );
+};
+/** 获取全部作业 */
+const getHomeworks = async (req: Request, res: Response) => {
+  connection.query(
+    "SELECT *  FROM homeworks  ORDER BY  deadline ASC",
+    (error, results, fields) => {
+      if (error) {
+        console.error(error);
+        res
+          .status(500)
+          .json({ success: false, message: "Internal server error." });
+      } else {
+        res.json({
+          success: true,
+          data: {
+            results,
+          },
+        });
+      }
+    }
+  );
+};
+/** 权限管理 菜单 */
 const adminRouter = {
   path: "/permission",
   meta: {
@@ -481,46 +538,6 @@ const adminRouter = {
         title: "按钮权限",
         roles: ["admin"],
         auths: ["btn_add", "btn_edit", "btn_delete"],
-      },
-    },
-  ],
-};
-/** correctHomework */
-const correctHomeworkRouter = {
-  path: "/correctHomework",
-  meta: {
-    title: "批改作业",
-    icon: "fluent-mdl2:account-activity",
-  },
-  children: [
-    {
-      path: "/correctHomework/index",
-      name: "CorrectHomework",
-      component: "correctHomework/index",
-      meta: {
-        title: "批改作业",
-        keepAlive: true,
-        roles: ["admin"],
-      },
-    },
-  ],
-};
-/** submitHomeworkRouter */
-const submitHomeworkRouter = {
-  path: "/submitHomework",
-  meta: {
-    title: "提交作业",
-    icon: "iconoir:submit-document",
-    roles: ["common"],
-  },
-  children: [
-    {
-      path: "/submitHomework/index",
-      name: "SubmitHomework",
-      component: () => "submitHomework/index",
-      meta: {
-        title: "提交作业",
-        keepAlive: true,
       },
     },
   ],
@@ -563,11 +580,78 @@ const errorPage = {
     },
   ],
 };
+/** 批改作业 */
+const correctHomeworkRouter = {
+  path: "/correctHomework",
+  meta: {
+    title: "批改作业",
+    icon: "fluent-mdl2:account-activity",
+  },
+  children: [
+    {
+      path: "/correctHomework/index",
+      name: "CorrectHomework",
+      component: "correctHomework/index",
+      meta: {
+        title: "批改作业",
+        keepAlive: true,
+        roles: ["admin"],
+      },
+    },
+  ],
+};
+/** 提交作业 */
+const submitHomeworkRouter = {
+  path: "/submitHomework",
+  meta: {
+    title: "提交作业",
+    icon: "iconoir:submit-document",
+    roles: ["common"],
+  },
+  children: [
+    {
+      path: "/submitHomework/index",
+      name: "SubmitHomework",
+      component: () => "submitHomework/index",
+      meta: {
+        title: "提交作业",
+        keepAlive: true,
+      },
+    },
+  ],
+};
+
+/** 发布作业 */
+const publishHomeworkRouter = {
+  path: "/publishHomework",
+  meta: {
+    title: "发布作业",
+    icon: "material-symbols:publish",
+    roles: ["admin"],
+  },
+  children: [
+    {
+      path: "/publishHomework/index",
+      name: "PublishHomework",
+      component: () => "publishHomework/index",
+      meta: {
+        title: "发布作业",
+        keepAlive: true,
+      },
+    },
+  ],
+};
 const asyncRoutes = async (req: Request, res: Response) => {
   res.json({
     success: true,
     back: "这是后端返回的路由",
-    data: [adminRouter, correctHomeworkRouter, submitHomeworkRouter, errorPage],
+    data: [
+      adminRouter,
+      errorPage,
+      correctHomeworkRouter,
+      submitHomeworkRouter,
+      publishHomeworkRouter,
+    ],
   });
 };
 
@@ -581,4 +665,6 @@ export {
   upload,
   captcha,
   asyncRoutes,
+  publishHomework,
+  getHomeworks,
 };

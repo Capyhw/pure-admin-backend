@@ -9,9 +9,8 @@ import getFormatDate from "../utils/date";
 import { connection } from "../utils/mysql";
 import { Request, Response } from "express";
 import { createMathExpr } from "svg-captcha";
-
 const utils = require("@pureadmin/utils");
-
+const path = require("path");
 /** 保存验证码 */
 let generateVerify: number;
 
@@ -459,16 +458,147 @@ const captcha = async (req: Request, res: Response) => {
   res.json({ success: true, data: { text: create.text, svg: create.data } });
 };
 
-let homeworks = [];
 /** 提交作业 */
-const submitHomework = async (req: Request, res: Response) => {};
+const submitHomework = async (req: Request, res: Response) => {
+  // 文件存放地址
+  const des_file = (index) => {
+    const originalname = decodeURIComponent(req.files[index].originalname);
+    const {
+      id,
+      title,
+      deadline,
+      content,
+      isSubmit,
+      status,
+      score,
+      name,
+      studentID,
+      class: class_,
+      phoneNumber,
+      email,
+    } = req.body;
+    return path.join("./public/homework", class_, id, studentID, originalname);
+  };
+
+  let filesLength = req.files?.length as number;
+  let result = [];
+
+  function asyncUpload() {
+    return new Promise((resolve, reject) => {
+      (req.files as Array<any>).forEach((ev, index) => {
+        const filePath = des_file(index);
+        const dirPath = path.dirname(filePath); // 获取目录路径
+        fs.mkdir(dirPath, { recursive: true }, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          fs.readFile(req.files[index].path, function (err, data) {
+            fs.writeFile(filePath, data, function (err) {
+              if (err) {
+                reject(err);
+              } else {
+                while (filesLength > 0) {
+                  result.push({
+                    filename: req.files[filesLength - 1].originalname,
+                    filepath: utils.getAbsolutePath(des_file(filesLength - 1)),
+                  });
+                  filesLength--;
+                }
+                if (filesLength === 0) resolve(result);
+              }
+            });
+          });
+        });
+      });
+    });
+  }
+  asyncUpload()
+    .then((fileList) => {
+      const {
+        id,
+        title,
+        deadline,
+        content,
+        isSubmit,
+        status,
+        score,
+        name,
+        studentID,
+        class: class_,
+        phoneNumber,
+        email,
+      } = req.body;
+      console.log(id);
+      let sql: string = `UPDATE homeworks SET isSubmit = true, status = 1 WHERE id = ${id};`;
+      connection.query(sql, function (err, data) {
+        connection.query(sql, async function (err) {
+          if (err) {
+            Logger.error(err);
+          } else {
+            res.json({
+              success: true,
+              errno: 0,
+              data,
+            });
+          }
+        });
+      });
+    })
+    .catch(() => {
+      res.json({
+        success: false,
+        errno: 1,
+        data: {
+          message: Message[10],
+        },
+      });
+    });
+};
+/** 删除已提交的作业 */
+const deleteSubmitedHomework = async (req: Request, res: Response) => {
+  const { class: class_, id, studentID } = req.query;
+  // 删除目录下所有文件
+  const deleteFiles = async (dirPath) => {
+    try {
+      const files = await fs.promises.readdir(dirPath); // 读取目录中的所有文件
+      for (const file of files) {
+        const filePath = path.join(dirPath, file); // 拼接文件路径
+        await fs.promises.unlink(filePath); // 删除文件
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  let sql = `UPDATE homeworks SET isSubmit = false, status = 0 WHERE id = ${id};`;
+
+  connection.query(sql, async (error, results, fields) => {
+    if (error) {
+      console.error(error);
+      res
+        .status(500)
+        .json({ success: false, message: "Internal server error." });
+    } else {
+      await deleteFiles(path.join("./public/homework", class_, id, studentID)); // 删除目录下所有文件
+      res.json({
+        success: true,
+        data: {
+          results,
+        },
+      });
+    }
+  });
+};
 /** 发布作业 */
 const publishHomework = async (req: Request, res: Response) => {
-  const { title, deadline, content } = req.body;
+  const { title, deadline, content, isSubmit, status, score } = req.body;
   const newHomework = {
     title,
     deadline,
     content,
+    isSubmit,
+    status,
+    score,
   };
   // 插入新作业数据到MySQL数据库中
   connection.query(
@@ -482,7 +612,6 @@ const publishHomework = async (req: Request, res: Response) => {
           .json({ success: false, message: "Internal server error." });
       } else {
         // 返回成功的响应，包括新作业的ID和详情
-        homeworks.push(newHomework);
         res.json({
           success: true,
           data: {
@@ -514,6 +643,58 @@ const getHomeworks = async (req: Request, res: Response) => {
     }
   );
 };
+
+/** 获取个人信息 */
+const getProfile = async (req: Request, res: Response) => {
+  const { username } = req.query;
+
+  connection.query(
+    `SELECT name, studentID, phoneNumber, email, class FROM users WHERE username = '${username}'`,
+    (error, results, fields) => {
+      if (error) {
+        console.error(error);
+        res
+          .status(500)
+          .json({ success: false, message: "Internal server error." });
+      } else {
+        res.json({
+          success: true,
+          data: {
+            results,
+          },
+        });
+      }
+    }
+  );
+};
+
+/** 修改个人信息 */
+const updateProfile = async (req: Request, res: Response) => {
+  const {
+    username,
+    name,
+    studentID,
+    phoneNumber,
+    email,
+    class: class_,
+  } = req.body;
+  console.log(username);
+  let sql: string = `UPDATE users SET name = '${name}', studentID = ${studentID},phoneNumber = '${phoneNumber}',email = '${email}',class = '${class_}' WHERE username = '${username}';`;
+  connection.query(sql, function (err, data) {
+    connection.query(sql, async function (err) {
+      if (err) {
+        Logger.error(err);
+      } else {
+        res.json({
+          success: true,
+          errno: 0,
+          data,
+        });
+      }
+    });
+  });
+};
+
 /** 权限管理 菜单 */
 const adminRouter = {
   path: "/permission",
@@ -641,6 +822,26 @@ const publishHomeworkRouter = {
     },
   ],
 };
+/** 导入名单 */
+const importXlsxRouter = {
+  path: "/importXlsx",
+  meta: {
+    title: "导入名单",
+    icon: "material-symbols:publish",
+    roles: ["admin"],
+  },
+  children: [
+    {
+      path: "/importXlsx/index",
+      name: "ImportXlsx",
+      component: () => "importXlsx/index",
+      meta: {
+        title: "导入名单",
+        keepAlive: true,
+      },
+    },
+  ],
+};
 const asyncRoutes = async (req: Request, res: Response) => {
   res.json({
     success: true,
@@ -651,6 +852,7 @@ const asyncRoutes = async (req: Request, res: Response) => {
       correctHomeworkRouter,
       submitHomeworkRouter,
       publishHomeworkRouter,
+      importXlsxRouter,
     ],
   });
 };
@@ -667,4 +869,8 @@ export {
   asyncRoutes,
   publishHomework,
   getHomeworks,
+  submitHomework,
+  deleteSubmitedHomework,
+  getProfile,
+  updateProfile,
 };

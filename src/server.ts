@@ -23,6 +23,10 @@ import {
   asyncRoutes,
   publishHomework,
   getHomeworks,
+  submitHomework,
+  deleteSubmitedHomework,
+  getProfile,
+  updateProfile,
 } from "./router/http";
 
 app.post("/login", (req, res) => {
@@ -95,8 +99,32 @@ app.get("/getHomeworks", (req, res) => {
   getHomeworks(req, res);
 });
 
+// 新建存放临时文件的文件夹
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "homework_tmp/");
+  },
+  filename: function (req, file, cb) {
+    const timestamp = Date.now();
+    cb(null, timestamp + "-" + file.originalname);
+  },
+});
+const homework_tmp = multer({ storage: storage });
+app.post("/submitHomework", homework_tmp.any(), (req, res) => {
+  submitHomework(req, res);
+});
 
+app.get("/deleteSubmitedHomework", (req, res) => {
+  deleteSubmitedHomework(req, res);
+});
 
+app.get("/getProfile", (req, res) => {
+  getProfile(req, res);
+});
+
+app.post("/updateProfile", (req, res) => {
+  updateProfile(req, res);
+});
 app
   .listen(config.port, () => {
     Logger.info(`

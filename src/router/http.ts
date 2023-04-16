@@ -9,6 +9,8 @@ import getFormatDate from "../utils/date";
 import { connection } from "../utils/mysql";
 import { Request, Response } from "express";
 import { createMathExpr } from "svg-captcha";
+
+const dayjs = require("dayjs");
 const utils = require("@pureadmin/utils");
 const path = require("path");
 /** 保存验证码 */
@@ -440,6 +442,77 @@ const upload = async (req: Request, res: Response) => {
     });
 };
 
+const uploadHomeworkContent = async (req: Request, res: Response) => {
+  const { id } = req.body;
+  // 文件存放地址
+  const des_file = (index) => {
+    const filename = decodeURIComponent(req.files[index].filename);
+    console.log(req.files[index]);
+
+    return path.join(
+      "./public/publishedHomeworkContent",
+      id,
+      filename + path.extname(decodeURIComponent(req.files[index].originalname))
+    );
+  };
+
+  let filesLength = req.files?.length as number;
+  let result = [];
+
+  function asyncUpload() {
+    return new Promise((resolve, reject) => {
+      (req.files as Array<any>).forEach((ev, index) => {
+        const filePath = des_file(index);
+        const dirPath = path.dirname(filePath); // 获取目录路径
+        fs.mkdir(dirPath, { recursive: true }, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          fs.readFile(req.files[index].path, function (err, data) {
+            fs.writeFile(filePath, data, function (err) {
+              if (err) {
+                reject(err);
+              } else {
+                while (filesLength > 0) {
+                  result.push({
+                    filename:
+                      req.files[filesLength - 1].filename +
+                      path.extname(req.files[filesLength - 1].originalname),
+                    filepath: utils.getAbsolutePath(des_file(filesLength - 1)),
+                  });
+                  filesLength--;
+                }
+                if (filesLength === 0) resolve(result);
+              }
+            });
+          });
+        });
+      });
+    });
+  }
+
+  asyncUpload()
+    .then((fileList) => {
+      res.json({
+        success: true,
+        errno: 0,
+        data: {
+          message: Message[11],
+          url: `http://127.0.0.1:3000/publishedHomeworkContent/${id}/${fileList[0]["filename"]}`,
+        },
+      });
+    })
+    .catch(() => {
+      res.json({
+        success: false,
+        errno: 1,
+        data: {
+          message: Message[10],
+        },
+      });
+    });
+};
 /**
  * @route GET /captcha
  * @summary 图形验证码
@@ -460,24 +533,25 @@ const captcha = async (req: Request, res: Response) => {
 
 /** 提交作业 */
 const submitHomework = async (req: Request, res: Response) => {
+  const {
+    id,
+    title,
+    deadline,
+    content,
+    isSubmit,
+    status,
+    score,
+    name,
+    studentID,
+    class: class_,
+    phoneNumber,
+    email,
+  } = req.body;
   // 文件存放地址
   const des_file = (index) => {
     const originalname = decodeURIComponent(req.files[index].originalname);
-    const {
-      id,
-      title,
-      deadline,
-      content,
-      isSubmit,
-      status,
-      score,
-      name,
-      studentID,
-      class: class_,
-      phoneNumber,
-      email,
-    } = req.body;
-    return path.join("./public/homework", class_, id, studentID, originalname);
+
+    return path.join("./public/homework", id, class_, studentID, originalname);
   };
 
   let filesLength = req.files?.length as number;
@@ -515,34 +589,26 @@ const submitHomework = async (req: Request, res: Response) => {
   }
   asyncUpload()
     .then((fileList) => {
-      const {
+      let sql: string =
+        "INSERT INTO submissions (homeworkID, studentID, `class`, states, submitTime) VALUES (?, ?, ?, ?, ?)";
+      let values = [
         id,
-        title,
-        deadline,
-        content,
-        isSubmit,
-        status,
-        score,
-        name,
         studentID,
-        class: class_,
-        phoneNumber,
-        email,
-      } = req.body;
-      console.log(id);
-      let sql: string = `UPDATE homeworks SET isSubmit = true, status = 1 WHERE id = ${id};`;
-      connection.query(sql, function (err, data) {
-        connection.query(sql, async function (err) {
-          if (err) {
-            Logger.error(err);
-          } else {
-            res.json({
-              success: true,
-              errno: 0,
-              data,
-            });
-          }
-        });
+        class_,
+        1,
+        dayjs().format("YYYY-MM-DD HH:mm:ss"),
+      ];
+
+      connection.query(sql, values, async function (err, results) {
+        if (err) {
+          Logger.error(err);
+        } else {
+          res.json({
+            results,
+            success: true,
+            errno: 0,
+          });
+        }
       });
     })
     .catch(() => {
@@ -561,30 +627,52 @@ const deleteSubmitedHomework = async (req: Request, res: Response) => {
   // 删除目录下所有文件
   const deleteFiles = async (dirPath) => {
     try {
-      const files = await fs.promises.readdir(dirPath); // 读取目录中的所有文件
+      const files = await fs.promises.readdir(dirPath); // 读取目录中的所有文件和文件夹
       for (const file of files) {
         const filePath = path.join(dirPath, file); // 拼接文件路径
-        await fs.promises.unlink(filePath); // 删除文件
+        const stat = await fs.promises.stat(filePath); // 获取文件/文件夹的状态信息
+        if (stat.isDirectory()) {
+          await deleteFiles(filePath); // 递归删除子文件夹
+        } else {
+          await fs.promises.unlink(filePath); // 删除文件
+        }
       }
+      await fs.promises.rmdir(dirPath); // 删除空文件夹
     } catch (err) {
       console.error(err);
     }
   };
-  let sql = `UPDATE homeworks SET isSubmit = false, status = 0 WHERE id = ${id};`;
 
-  connection.query(sql, async (error, results, fields) => {
-    if (error) {
-      console.error(error);
+  let sql1 = `UPDATE homeworks SET isSubmit = false, status = 0 WHERE id = ${id}`;
+  connection.query(sql1, (error1, results1, fields1) => {
+    if (error1) {
+      console.error(error1);
       res
         .status(500)
         .json({ success: false, message: "Internal server error." });
     } else {
-      await deleteFiles(path.join("./public/homework", class_, id, studentID)); // 删除目录下所有文件
-      res.json({
-        success: true,
-        data: {
-          results,
-        },
+      // 第一个查询成功，执行第二个查询
+      let sql2 = `DELETE FROM submissions WHERE homeworkID = ${id} AND studentID = ${studentID}`;
+      connection.query(sql2, async (error2, results2, fields2) => {
+        if (error2) {
+          console.error(error2);
+          res
+            .status(500)
+            .json({ success: false, message: "Internal server error." });
+        } else {
+          // 第二个查询成功，删除文件夹中的文件
+          await deleteFiles(
+            path.join("./public/homework", id, class_, studentID)
+          );
+
+          // 返回查询结果
+          res.json({
+            success: true,
+            data: {
+              results: [results1, results2],
+            },
+          });
+        }
       });
     }
   });
@@ -622,6 +710,70 @@ const publishHomework = async (req: Request, res: Response) => {
     }
   );
 };
+
+/** 删除已发布作业 */
+const deletePublishedHomework = async (req: Request, res: Response) => {
+  const { id } = req.query;
+
+  // 删除目录下所有文件
+  const deleteFiles = async (dirPath) => {
+    try {
+      const files = await fs.promises.readdir(dirPath); // 读取目录中的所有文件和文件夹
+      for (const file of files) {
+        const filePath = path.join(dirPath, file); // 拼接文件路径
+        const stat = await fs.promises.stat(filePath); // 获取文件/文件夹的状态信息
+        if (stat.isDirectory()) {
+          await deleteFiles(filePath); // 递归删除子文件夹
+        } else {
+          await fs.promises.unlink(filePath); // 删除文件
+        }
+      }
+      await fs.promises.rmdir(dirPath); // 删除空文件夹
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  let sql = `DELETE FROM homeworks WHERE id=${id};`;
+
+  connection.query(sql, async (error, results, fields) => {
+    if (error) {
+      console.error(error);
+      res
+        .status(500)
+        .json({ success: false, message: "Internal server error." });
+    } else {
+      await deleteFiles(path.join("./public/homework", id)); // 删除目录下所有文件
+      res.json({
+        success: true,
+        data: {
+          results,
+        },
+      });
+    }
+  });
+};
+
+/** 修改已发布作业 */
+const updatePublishedHomework = async (req: Request, res: Response) => {
+  const { id, title, deadline, content } = req.body;
+  console.log(id, title, deadline, content);
+
+  let sql: string = `UPDATE homeworks SET title = '${title}', deadline = '${deadline}',content = '${content}' WHERE id = ${id};`;
+  connection.query(sql, function (err, data) {
+    connection.query(sql, async function (err) {
+      if (err) {
+        Logger.error(err);
+      } else {
+        res.json({
+          success: true,
+          errno: 0,
+          data,
+        });
+      }
+    });
+  });
+};
+
 /** 获取全部作业 */
 const getHomeworks = async (req: Request, res: Response) => {
   connection.query(
@@ -643,7 +795,84 @@ const getHomeworks = async (req: Request, res: Response) => {
     }
   );
 };
+/** 获取作业图片 */
+const getHomeworkImages = async (req: Request, res: Response) => {
+  // 文件夹路径
+  const homeworkDir = "./public/homework";
 
+  // 递归函数，遍历整个文件夹结构
+  function traverse(dir, result) {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory()) {
+        // 如果是文件夹，则递归遍历
+        traverse(filePath, result);
+      } else {
+        // 如果是文件，则构建作业对象
+        const [homeworkId, className, studentId, imageName] = filePath
+          .split(path.sep)
+          .slice(-4);
+        const homework = result.find((h) => h.id === homeworkId) || {
+          id: homeworkId,
+          classes: [],
+        };
+        const clazz = homework.classes.find((c) => c.name === className) || {
+          name: className,
+          students: [],
+        };
+        let student = clazz.students.find((s) => s.id === studentId);
+        if (!student) {
+          student = { id: studentId, images: [] };
+          clazz.students.push(student);
+        }
+        const image = { name: imageName, path: filePath };
+        student.images.push(image);
+        if (!homework.classes.includes(clazz)) {
+          homework.classes.push(clazz);
+        }
+        if (!result.includes(homework)) {
+          result.push(homework);
+        }
+      }
+    }
+  }
+
+  // 构建数组对象
+  const result = [];
+  traverse(homeworkDir, result);
+
+  // 返回结果
+  console.log(result);
+  res.json({ success: true, result });
+};
+/** 查询作业情况 */
+const getHomeworkStates = async (req: Request, res: Response) => {
+  const { studentID } = req.query;
+  console.log(req);
+
+  connection.query(
+    `SELECT *  FROM submissions WHERE studentID='${studentID}'`,
+    (error, results, fields) => {
+      if (error) {
+        console.error(error);
+        res
+          .status(500)
+          .json({ success: false, message: "Internal server error." });
+      } else {
+        console.log(results);
+
+        res.json({
+          success: true,
+          data: {
+            results,
+          },
+        });
+      }
+    }
+  );
+};
 /** 获取个人信息 */
 const getProfile = async (req: Request, res: Response) => {
   const { username } = req.query;
@@ -702,6 +931,7 @@ const adminRouter = {
     title: "权限管理",
     icon: "lollipop",
     rank: 10,
+    showLink: false,
   },
   children: [
     {
@@ -730,7 +960,7 @@ const errorPage = {
   meta: {
     icon: "informationLine",
     title: "异常页面",
-    // showLink: false,
+    showLink: false,
     rank: 9,
     roles: ["admin"],
   },
@@ -802,21 +1032,21 @@ const submitHomeworkRouter = {
   ],
 };
 
-/** 发布作业 */
-const publishHomeworkRouter = {
-  path: "/publishHomework",
+/** 作业管理 */
+const manageHomeworkRouter = {
+  path: "/manageHomework",
   meta: {
-    title: "发布作业",
-    icon: "material-symbols:publish",
+    title: "作业管理",
+    icon: "material-symbols:bookmark-manager-rounded",
     roles: ["admin"],
   },
   children: [
     {
-      path: "/publishHomework/index",
-      name: "PublishHomework",
-      component: () => "publishHomework/index",
+      path: "/manageHomework/index",
+      name: "ManageHomework",
+      component: () => "manageHomework/index",
       meta: {
-        title: "发布作业",
+        title: "作业管理",
         keepAlive: true,
       },
     },
@@ -851,7 +1081,7 @@ const asyncRoutes = async (req: Request, res: Response) => {
       errorPage,
       correctHomeworkRouter,
       submitHomeworkRouter,
-      publishHomeworkRouter,
+      manageHomeworkRouter,
       importXlsxRouter,
     ],
   });
@@ -865,10 +1095,15 @@ export {
   searchPage,
   searchVague,
   upload,
+  uploadHomeworkContent,
   captcha,
   asyncRoutes,
   publishHomework,
+  deletePublishedHomework,
+  updatePublishedHomework,
   getHomeworks,
+  getHomeworkImages,
+  getHomeworkStates,
   submitHomework,
   deleteSubmitedHomework,
   getProfile,

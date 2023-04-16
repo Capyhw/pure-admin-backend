@@ -1,6 +1,7 @@
 import * as express from "express";
 import * as expressWs from "express-ws";
 import * as bodyParser from "body-parser";
+const cors = require("cors");
 
 class App {
   public app;
@@ -19,6 +20,7 @@ class App {
         extended: true,
       })
     );
+    this.app.use(cors());
     // 设置静态访问目录(Swagger)
     this.app.use(express.static("public"));
     // 设置跨域访问

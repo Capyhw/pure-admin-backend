@@ -3,14 +3,18 @@ import app from "./app";
 import config from "./config";
 import * as dayjs from "dayjs";
 import * as multer from "multer";
-import { homework, user } from "./models/mysql";
+import { homework, user, submission } from "./models/mysql";
 import Logger from "./loaders/logger";
 import { queryTable } from "./utils/mysql";
 const expressSwagger = require("express-swagger-generator")(app);
+const cors = require("cors");
+app.use(cors());
 expressSwagger(config.options);
 
 queryTable(user);
 queryTable(homework);
+queryTable(submission);
+
 import {
   login,
   register,
@@ -19,10 +23,15 @@ import {
   searchPage,
   searchVague,
   upload,
+  uploadHomeworkContent,
   captcha,
   asyncRoutes,
   publishHomework,
+  deletePublishedHomework,
+  updatePublishedHomework,
   getHomeworks,
+  getHomeworkImages,
+  getHomeworkStates,
   submitHomework,
   deleteSubmitedHomework,
   getProfile,
@@ -57,6 +66,10 @@ app.post("/searchVague", (req, res) => {
 const upload_tmp = multer({ dest: "upload_tmp/" });
 app.post("/upload", upload_tmp.any(), (req, res) => {
   upload(req, res);
+});
+
+app.post("/uploadHomeworkContent", upload_tmp.any(), (req, res) => {
+  uploadHomeworkContent(req, res);
 });
 
 app.get("/captcha", (req, res) => {
@@ -95,8 +108,24 @@ app.post("/publishHomework", (req, res) => {
   publishHomework(req, res);
 });
 
+app.get("/deletePublishedHomework", (req, res) => {
+  deletePublishedHomework(req, res);
+});
+
+app.post("/updatePublishedHomework", (req, res) => {
+  updatePublishedHomework(req, res);
+});
+
 app.get("/getHomeworks", (req, res) => {
   getHomeworks(req, res);
+});
+
+app.get("/getHomeworkImages", (req, res) => {
+  getHomeworkImages(req, res);
+});
+
+app.get("/getHomeworkStates", (req, res) => {
+  getHomeworkStates(req, res);
 });
 
 // 新建存放临时文件的文件夹

@@ -13,6 +13,7 @@ import { createMathExpr } from "svg-captcha";
 const dayjs = require("dayjs");
 const utils = require("@pureadmin/utils");
 const path = require("path");
+const archiver = require("archiver");
 /** 保存验证码 */
 let generateVerify: number;
 
@@ -447,8 +448,6 @@ const uploadHomeworkContent = async (req: Request, res: Response) => {
   // 文件存放地址
   const des_file = (index) => {
     const filename = decodeURIComponent(req.files[index].filename);
-    console.log(req.files[index]);
-
     return path.join(
       "./public/publishedHomeworkContent",
       id,
@@ -621,6 +620,114 @@ const submitHomework = async (req: Request, res: Response) => {
       });
     });
 };
+/** 保存批改后的作业 */
+const saveCorrectedHomework = async (req: Request, res: Response) => {
+  const { id, score, studentID, class: class_ } = req.body;
+  // 文件存放地址
+  const des_file = (index) => {
+    const originalname = decodeURIComponent(req.files[index].originalname);
+    return path.join("./public/homework", id, class_, studentID, originalname);
+  };
+
+  let filesLength = req.files?.length as number;
+  let result = [];
+
+  function asyncUpload() {
+    return new Promise((resolve, reject) => {
+      (req.files as Array<any>).forEach((ev, index) => {
+        const filePath = des_file(index);
+        const dirPath = path.dirname(filePath); // 获取目录路径
+        fs.mkdir(dirPath, { recursive: true }, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          fs.readFile(req.files[index].path, function (err, data) {
+            fs.writeFile(filePath, data, function (err) {
+              if (err) {
+                reject(err);
+              } else {
+                while (filesLength > 0) {
+                  result.push({
+                    filename: req.files[filesLength - 1].originalname,
+                    filepath: utils.getAbsolutePath(des_file(filesLength - 1)),
+                  });
+                  filesLength--;
+                }
+                if (filesLength === 0) resolve(result);
+              }
+            });
+          });
+        });
+      });
+    });
+  }
+  asyncUpload()
+    .then((fileList) => {
+      let sql: string = `UPDATE submissions SET states=2, score='${score}' WHERE homeworkID='${id}' AND studentID='${studentID}';`;
+
+      connection.query(sql, async function (err, results) {
+        if (err) {
+          Logger.error(err);
+        } else {
+          res.json({
+            results,
+            success: true,
+            errno: 0,
+          });
+        }
+      });
+    })
+    .catch(() => {
+      res.json({
+        success: false,
+        errno: 1,
+        data: {
+          message: Message[10],
+        },
+      });
+    });
+};
+/** 给出分数 */
+const postScore = async (req: Request, res: Response) => {
+  const { id, score, studentID } = req.body;
+  let sql: string = `UPDATE submissions SET score='${score}' WHERE homeworkID='${id}' AND studentID='${studentID}';`;
+
+  connection.query(sql, async function (err, results) {
+    if (err) {
+      Logger.error(err);
+    } else {
+      res.json({
+        results,
+        success: true,
+        errno: 0,
+      });
+    }
+  });
+};
+/** 获取分数 */
+const getScore = async (req: Request, res: Response) => {
+  const { studentID } = req.query;
+
+  connection.query(
+    `SELECT * FROM submissions WHERE studentID = '${studentID}'`,
+    (error, results, fields) => {
+      if (error) {
+        console.error(error);
+        res
+          .status(500)
+          .json({ success: false, message: "Internal server error." });
+      } else {
+        res.json({
+          success: true,
+          data: {
+            results,
+          },
+        });
+      }
+    }
+  );
+};
 /** 删除已提交的作业 */
 const deleteSubmitedHomework = async (req: Request, res: Response) => {
   const { class: class_, id, studentID } = req.query;
@@ -652,6 +759,8 @@ const deleteSubmitedHomework = async (req: Request, res: Response) => {
         .json({ success: false, message: "Internal server error." });
     } else {
       // 第一个查询成功，执行第二个查询
+      console.log(id, studentID);
+
       let sql2 = `DELETE FROM submissions WHERE homeworkID = ${id} AND studentID = ${studentID}`;
       connection.query(sql2, async (error2, results2, fields2) => {
         if (error2) {
@@ -733,21 +842,34 @@ const deletePublishedHomework = async (req: Request, res: Response) => {
       console.error(err);
     }
   };
-  let sql = `DELETE FROM homeworks WHERE id=${id};`;
-
-  connection.query(sql, async (error, results, fields) => {
-    if (error) {
-      console.error(error);
+  let sql1 = `DELETE FROM homeworks WHERE id=${id};`;
+  connection.query(sql1, (error1, results1, fields1) => {
+    if (error1) {
+      console.error(error1);
       res
         .status(500)
         .json({ success: false, message: "Internal server error." });
     } else {
-      await deleteFiles(path.join("./public/homework", id)); // 删除目录下所有文件
-      res.json({
-        success: true,
-        data: {
-          results,
-        },
+      // 第一个查询成功，执行第二个查询
+      let sql2 = `DELETE FROM submissions WHERE homeworkID = ${id}`;
+      connection.query(sql2, async (error2, results2, fields2) => {
+        if (error2) {
+          console.error(error2);
+          res
+            .status(500)
+            .json({ success: false, message: "Internal server error." });
+        } else {
+          // 第二个查询成功，删除文件夹中的文件
+          await deleteFiles(path.join("./public/homework", id));
+
+          // 返回查询结果
+          res.json({
+            success: true,
+            data: {
+              results: [results1, results2],
+            },
+          });
+        }
       });
     }
   });
@@ -756,7 +878,6 @@ const deletePublishedHomework = async (req: Request, res: Response) => {
 /** 修改已发布作业 */
 const updatePublishedHomework = async (req: Request, res: Response) => {
   const { id, title, deadline, content } = req.body;
-  console.log(id, title, deadline, content);
 
   let sql: string = `UPDATE homeworks SET title = '${title}', deadline = '${deadline}',content = '${content}' WHERE id = ${id};`;
   connection.query(sql, function (err, data) {
@@ -816,21 +937,22 @@ const getHomeworkImages = async (req: Request, res: Response) => {
           .slice(-4);
         const homework = result.find((h) => h.id === homeworkId) || {
           id: homeworkId,
-          classes: [],
+          disabled: true,
+          children: [],
         };
-        const clazz = homework.classes.find((c) => c.name === className) || {
-          name: className,
-          students: [],
+        const clazz = homework.children.find((c) => c.id === className) || {
+          id: className,
+          children: [],
         };
-        let student = clazz.students.find((s) => s.id === studentId);
+        let student = clazz.children.find((s) => s.id === studentId);
         if (!student) {
           student = { id: studentId, images: [] };
-          clazz.students.push(student);
+          clazz.children.push(student);
         }
         const image = { name: imageName, path: filePath };
         student.images.push(image);
-        if (!homework.classes.includes(clazz)) {
-          homework.classes.push(clazz);
+        if (!homework.children.includes(clazz)) {
+          homework.children.push(clazz);
         }
         if (!result.includes(homework)) {
           result.push(homework);
@@ -842,16 +964,11 @@ const getHomeworkImages = async (req: Request, res: Response) => {
   // 构建数组对象
   const result = [];
   traverse(homeworkDir, result);
-
-  // 返回结果
-  console.log(result);
   res.json({ success: true, result });
 };
 /** 查询作业情况 */
 const getHomeworkStates = async (req: Request, res: Response) => {
   const { studentID } = req.query;
-  console.log(req);
-
   connection.query(
     `SELECT *  FROM submissions WHERE studentID='${studentID}'`,
     (error, results, fields) => {
@@ -861,8 +978,6 @@ const getHomeworkStates = async (req: Request, res: Response) => {
           .status(500)
           .json({ success: false, message: "Internal server error." });
       } else {
-        console.log(results);
-
         res.json({
           success: true,
           data: {
@@ -907,7 +1022,6 @@ const updateProfile = async (req: Request, res: Response) => {
     email,
     class: class_,
   } = req.body;
-  console.log(username);
   let sql: string = `UPDATE users SET name = '${name}', studentID = ${studentID},phoneNumber = '${phoneNumber}',email = '${email}',class = '${class_}' WHERE username = '${username}';`;
   connection.query(sql, function (err, data) {
     connection.query(sql, async function (err) {
@@ -921,6 +1035,39 @@ const updateProfile = async (req: Request, res: Response) => {
         });
       }
     });
+  });
+};
+
+/** 打包下载作业 */
+const downloadHomework = async (req: Request, res: Response) => {
+  const folderPath = "./public/homework";
+  const absoluteFolderPath = path.resolve(folderPath);
+  const zipFileName = `${path.basename(absoluteFolderPath)}.zip`;
+  const absoluteZipFilePath = path.join(__dirname, zipFileName);
+
+  // 创建zip输出流
+  const output = fs.createWriteStream(absoluteZipFilePath);
+  const archive = archiver("zip", { zlib: { level: 9 } });
+  // 将zip输出流管道到输出流
+  archive.pipe(output);
+  // 添加文件夹到zip
+  archive.directory(absoluteFolderPath, false);
+
+  // 监听zip输出流关闭事件
+  output.on("close", () => {
+    // 将zip文件发送给前端
+    res.sendFile(absoluteZipFilePath, (err) => {
+      if (err) {
+        console.error(err);
+      }
+      // 删除zip文件
+      fs.unlinkSync(absoluteZipFilePath);
+    });
+  });
+
+  // 完成zip打包
+  archive.finalize(() => {
+    console.log("Archive finalize done");
   });
 };
 
@@ -1108,4 +1255,8 @@ export {
   deleteSubmitedHomework,
   getProfile,
   updateProfile,
+  saveCorrectedHomework,
+  postScore,
+  getScore,
+  downloadHomework,
 };

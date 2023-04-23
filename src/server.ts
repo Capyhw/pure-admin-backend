@@ -36,6 +36,10 @@ import {
   deleteSubmitedHomework,
   getProfile,
   updateProfile,
+  saveCorrectedHomework,
+  postScore,
+  getScore,
+  downloadHomework,
 } from "./router/http";
 
 app.post("/login", (req, res) => {
@@ -141,6 +145,23 @@ const storage = multer.diskStorage({
 const homework_tmp = multer({ storage: storage });
 app.post("/submitHomework", homework_tmp.any(), (req, res) => {
   submitHomework(req, res);
+});
+
+app.post("/saveCorrectedHomework", homework_tmp.any(), (req, res) => {
+  saveCorrectedHomework(req, res);
+});
+
+app.post("/postScore", (req, res) => {
+  postScore(req, res);
+});
+
+app.get("/getScore", (req, res) => {
+  getScore(req, res);
+});
+
+app.get("/downloadHomework", (req, res) => {
+  res.header("Content-Type", "application/octet-stream");
+  downloadHomework(req, res);
 });
 
 app.get("/deleteSubmitedHomework", (req, res) => {

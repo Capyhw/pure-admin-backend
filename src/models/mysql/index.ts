@@ -8,5 +8,5 @@ const homework =
 
 /** 创建submission表 */
 const submission =
-  "CREATE TABLE IF NOT EXISTS submissions (	id INT PRIMARY KEY AUTO_INCREMENT,	homeworkID varchar(32),	studentID varchar(32),	class varchar(32),	states TINYINT DEFAULT 0,	submitTime DATETIME)";
+  "CREATE TABLE IF NOT EXISTS submissions (	id INT PRIMARY KEY AUTO_INCREMENT,	homeworkID varchar(32),	studentID varchar(32),	class varchar(32),	states TINYINT DEFAULT 0,	submitTime DATETIME ,score varchar(32) DEFAULT NULL)";
 export { user, homework, submission };
